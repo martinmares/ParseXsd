@@ -10,20 +10,20 @@ VERSION = "v0.1beta"
 # Parse ARGS~
 opts = Trollop::options do
   version "parsexsd #{VERSION} (c) 2015 Martin Mareš"
-  opt :xsd, 'název vstupního XSD souboru', type: :string
-  opt :xlsx, 'název výstupního XLSX souboru', type: :string
-  opt :stdout, 'vypiš strukturu XSD na obrazovku'
-  opt :indent, 'název elementů v XLSX bude odsazen'
-  opt :border, 'generovat mřížku u buněk?'
-  opt :columns, 'seznam sloupců v XLSX', type: :string
-  opt "request-end-with".to_sym, 'označ řádek končící na {Request}', type: :string
-  opt "response-end-with".to_sym, 'označ řádek končící na {Response}', type: :string
-  opt "header-request".to_sym, 'přidej hlavičku ke každému {Request} elem.'
-  opt "header-response".to_sym, 'přidej hlavičku ke každému {Response} elem.'
-  opt "auto-filter".to_sym, 'zapni "auto filter"'
-  opt "font-name".to_sym, 'změň implicitní font ("Tahoma")', type: :string
-  opt "font-size".to_sym, 'změň implicitní velikost fontu (9)', type: :int
-  opt "header-font-size".to_sym, 'změň implicitní velikost fontu hlavičky (9)', type: :int
+  opt :xsd, 'name of the input XSD file', type: :string
+  opt :xlsx, 'name of the output XLSX file', type: :string
+  opt :stdout, 'write the XSD structure on the screen'
+  opt :indent, 'name the elements in XLSX will be indented'
+  opt :border, 'generate a border for cells in XLSX?'
+  opt :columns, 'the list of columns in the XLSX', type: :string
+  opt "request-end-with".to_sym, 'mark the line ending at {Request}', type: :string
+  opt "response-end-with".to_sym, 'mark the line ending at {Response}', type: :string
+  opt "header-request".to_sym, 'add a header to each of the {Request} elem.'
+  opt "header-response".to_sym, 'add a header to each of the {Response} elem.'
+  opt "auto-filter".to_sym, 'turn on the "auto filter on the first row"'
+  opt "font-name".to_sym, 'change the default font ("Tahoma")', type: :string
+  opt "font-size".to_sym, 'change the default font size (9)', type: :int
+  opt "header-font-size".to_sym, 'change the default heder font size (9)', type: :int
 end
 
 config_file = opts[:config_file]
