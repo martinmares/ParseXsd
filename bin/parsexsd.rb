@@ -5,7 +5,7 @@ require 'term/ansicolor'
 require 'axlsx'
 require 'trollop'
 
-VERSION = "v0.1beata"
+VERSION = "v0.1beta"
 
 # Parse ARGS~
 opts = Trollop::options do
