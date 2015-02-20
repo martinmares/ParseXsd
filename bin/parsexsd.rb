@@ -5,9 +5,11 @@ require 'term/ansicolor'
 require 'axlsx'
 require 'trollop'
 
+VERSION = "v0.1beata"
+
 # Parse ARGS~
 opts = Trollop::options do
-  version "ParseXsd (c) 2015 Martin Mareš"
+  version "parsexsd #{VERSION} (c) 2015 Martin Mareš"
   opt :xsd, 'název vstupního XSD souboru', type: :string
   opt :xlsx, 'název výstupního XLSX souboru', type: :string
   opt :stdout, 'vypiš strukturu XSD na obrazovku'
