@@ -52,14 +52,15 @@ class String
 end
 
 
-Element = Struct.new(:name, :type, :ref, :its_complex_type, :its_simple_type, :min_occurs, :max_occurs, :nillable, :description, :deep, :inout, :its_recursion)
-Deep = Struct.new(:nodeType, :deep, :count)
+Element = Struct.new(:name, :type, :ref, :its_complex_type, :its_simple_type, :min_occurs, :max_occurs, :nillable, :description, :deep, :inout, :its_recursion, :prefix)
+Imported = Struct.new(:namespace, :schemalocation, :content)
 
 @columns = {name: 'NAME', schematype: "XMLSCHEMA\nTYPE", type: 'TYPE', length: "LENGTH/\nPRECISION", multi: 'MULTIPL.', enum: "ENUM.\nVALUES", kind: 'KIND', desc: 'DESCRIPTION', mandatory: 'MANDATORY', complex: "COMPLEX\nTYPE", simple: "SIMPLE\nTYPE", minoccurs: "MIN\nOCCURS", maxoccurs: "MAX\nOCCURS", nill: 'NILLABLE'}
 
 @header = Array.new
 @empty_row = Array.new
 @only_columns = Hash.new
+@imported_schemas = Hash.new
 
 # name schematype type length multi enum kind desc mandatory complex simple minoccurs maxoccurs nill
 if opts[:columns]
@@ -92,10 +93,17 @@ end
 
 xsd_file = opts[:xsd]
 
-f = File.open(xsd_file)
-@doc = Nokogiri::XML(f)
-f.close
+def load_xsd_file(filename)
+  if File::exist? filename
+    Nokogiri::XML(File.open(filename))
+  else
+    nil
+  end
+end
 
+@doc = load_xsd_file(xsd_file)
+
+# Load all namespaces
 @namespaces = @doc.collect_namespaces
 @xsd_namespace = ''
 @namespaces.each do |key,val|
@@ -103,6 +111,27 @@ f.close
 end
 @xsd_prefix = @xsd_namespace.split(':')[1]
 
+# Import XSD documents (xsd:import)
+@import_elements = @doc.xpath('/namespace:schema/namespace:import', namespace: XMLSCHEMA)
+unless @import_elements.nil?
+  @import_elements.each do |elem|
+    namespace = elem['namespace']
+    schemalocation = elem['schemaLocation']
+    # puts "Namespace: #{namespace}"
+    # puts "Schema location: #{schemalocation}"
+    @namespaces.each do |key,val|
+      if val == namespace
+        prefix = key.split(':')[1]
+        # puts "Prefix: #{prefix}"
+        content = load_xsd_file(schemalocation)
+        @imported_schemas[prefix] = Imported.new(namespace, schemalocation, content) if content
+        break
+      end
+    end
+  end
+end
+
+# Search for root node
 @root_node = @doc.xpath('/namespace:schema/namespace:element', namespace: XMLSCHEMA)
 @elements = Hash.new
 @enums = Hash.new
@@ -121,8 +150,8 @@ def print_enums(node_name, enum_node, deep = 0)
   @enums[node_name].strip!
 end
 
-def exist_complex_type(node, schema)
-    complex_type_node = @doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+def exist_complex_type(doc, node, schema)
+    complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
     unless complex_type_node.nil?
       complex_type_node.size > 0
     else
@@ -130,8 +159,8 @@ def exist_complex_type(node, schema)
     end
 end
 
-def exist_simple_type(node, schema)
-    simple_type_node = @doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+def exist_simple_type(doc, node, schema)
+    simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
     unless simple_type_node.nil?
       simple_type_node.size > 0
     else
@@ -157,8 +186,8 @@ def nillable(node)
   s
 end
 
-def documentation(node, deep)
-  description_node = node.xpath("namespace:annotation/namespace:documentation", namespace: XMLSCHEMA)
+def documentation(node, deep, schema)
+  description_node = node.xpath("namespace:annotation/namespace:documentation", namespace: schema)
   if description_node.size > 0
     description = description_node[0].content
     puts "#{padding(deep)}# #{description}".magenta if @stdout && description
@@ -166,51 +195,63 @@ def documentation(node, deep)
   description || ''
 end
 
-def print_elements(start_node, schema, deep = 0, inout = 'in', node_types = '')
+def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types = '', prefix = '')
   start_node.each do |node|
     key = "#{@cnt}-#{node['name']}-#{node['type']}-#{node['ref']}"
     io ||= inout
     io = 'out' if node['name'] && node['name'].end_with?(@test_response)
-    if exist_complex_type(node, schema)
+    if exist_complex_type(doc, node, schema)
       # Komplexní typ
-      description = documentation(node, deep)
-      puts "#{padding(deep)}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
-      @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
-      complex_type_node = @doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: XMLSCHEMA)
-      extension_base = complex_type_node.xpath("descendant::*/namespace:extension", namespace: XMLSCHEMA)
+      description = documentation(node, deep, schema)
+      puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
+      @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+      extension_base = complex_type_node.xpath("descendant::*/namespace:extension", namespace: schema)
       # Extension
       if extension_base.size > 0
         base_name = extension_base[0]['base']
-        puts "#{padding(deep + 1)}#{base_name.on_yellow} #{'@extension'.on_blue}" if @stdout
-        extension_base_node = @doc.xpath("/namespace:schema/namespace:complexType[@name='#{base_name}']", namespace: XMLSCHEMA)
-        extension_element_nodes = extension_base_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: XMLSCHEMA)
-        print_elements(extension_element_nodes, schema, deep + 2, io) unless extension_base_node.empty?
+        puts "#{padding(deep + 1)}#{prefix}#{base_name.on_yellow} #{'@extension'.on_blue}" if @stdout
+        extension_base_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{base_name}']", namespace: schema)
+        extension_element_nodes = extension_base_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+        # Test for prefix, e.g. "prefix:complexType"...
+        # if success, print imported elements
+        if base_name.split(':').size == 2
+          imp_prefix = base_name.split(':')[0]
+          imp_type = base_name.split(':')[1]
+          imp_doc = @imported_schemas[imp_prefix][:content]
+          imp_complex_type_node = imp_doc.xpath("/namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
+          imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+          # p imp_type
+          # p imp_complex_type_node.size
+          print_elements(imp_doc, imp_element_nodes, schema, deep + 2, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+        end
+        print_elements(doc, extension_element_nodes, schema, deep + 2, io, '', prefix) unless extension_base_node.empty?
       end
-      element_nodes = complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: XMLSCHEMA)
+      element_nodes = complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
       unless check_recursion(node_types, "#{node['type']}", deep)
-        print_elements(element_nodes, schema, deep + 1, io, "#{node_types}#{node['type']};") unless complex_type_node.empty?
+        print_elements(doc, element_nodes, schema, deep + 1, io, "#{node_types}#{node['type']};", prefix) unless complex_type_node.empty?
       else
         @elements[key][:description] = "Rekurze komplexního typu \"#{node['type']}\"..."
         @elements[key][:its_recursion] = true
         return
       end
-    elsif exist_simple_type(node, schema)
+    elsif exist_simple_type(doc, node, schema)
       # Výčet (SimpleType)
-      description = documentation(node, deep)
-      puts "#{padding(deep)}#{node['name']} #{node['type'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
-      @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
-      simple_type_node = @doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: XMLSCHEMA)
-      enum_nodes = simple_type_node.xpath("descendant::*/namespace:enumeration", namespace: XMLSCHEMA)
+      description = documentation(node, deep, schema)
+      puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
+      @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+      enum_nodes = simple_type_node.xpath("descendant::*/namespace:enumeration", namespace: schema)
       print_enums(node['type'], enum_nodes, deep + 1) unless simple_type_node.empty?
     else
       # Element
-      description = documentation(node, deep)
-      puts "#{padding(deep)}#{node['name']} [#{node['type'].green}]#{occurs(node)}#{nillable(node)} #{'@element'.on_blue}" unless node['name'].nil? if @stdout
-      @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
+      description = documentation(node, deep, schema)
+      puts "#{padding(deep)}#{prefix}#{node['name']} [#{node['type'].green}]#{occurs(node)}#{nillable(node)} #{'@element'.on_blue}" unless node['name'].nil? if @stdout
+      @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       unless node['ref'].nil?
-        ref_type_node = @doc.xpath("/namespace:schema/namespace:group[@name='#{node['ref']}']", namespace: XMLSCHEMA)
-        group_nodes = ref_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: XMLSCHEMA)
-        print_elements(group_nodes, schema, deep + 1, io) unless ref_type_node.empty?
+        ref_type_node = doc.xpath("/namespace:schema/namespace:group[@name='#{node['ref']}']", namespace: schema)
+        group_nodes = ref_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+        print_elements(doc, group_nodes, schema, deep + 1, io, '', prefix) unless ref_type_node.empty?
       end
     end
     @cnt += 1
@@ -359,15 +400,22 @@ def save_xlsx
         }
 
         row = get_row_data(row_data)
-        sheet.add_row row
 
-        sheet.row_style i+1, normal_cell
-        sheet.row_style i+1, italic_cell unless struct[:ref].nil?
-        sheet.row_style i+1, complex_cell if struct[:its_complex_type] == 'Y'
-        sheet.row_style i+1, enum_cell if struct[:its_simple_type] == 'Y'
-        sheet.row_style i+1, recursion_cell if struct[:its_recursion]
-        sheet.row_style i+1, marked_cell if name.end_with? @test_request
-        sheet.row_style i+1, marked_cell if name.end_with? @test_response
+        style = normal_cell
+        style = italic_cell unless struct[:ref].nil?
+        style = complex_cell if struct[:its_complex_type] == 'Y'
+        style = enum_cell if struct[:its_simple_type] == 'Y'
+        style = recursion_cell if struct[:its_recursion]
+        style = marked_cell if name.end_with? @test_request
+        style = marked_cell if name.end_with? @test_response
+
+        #unless struct[:prefix].empty?
+        #  style << s.add_style 
+        #end
+
+        sheet.add_row row, style: style
+        #sheet.row_style i+1, style
+
         i += 1
       end
       sheet.auto_filter = "A1:H1" if @auto_filter
@@ -380,7 +428,7 @@ def save_xlsx
   puts "#{'=' * 40}"
 end
 
-print_elements(@root_node, XMLSCHEMA) if @xsd_file_name
+print_elements(@doc, @root_node, XMLSCHEMA) if @xsd_file_name
 
 # Print
 puts "\n#{'=' * 10} List of namespaces #{'=' * 10}"
