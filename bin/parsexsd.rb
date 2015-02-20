@@ -6,6 +6,7 @@ require 'axlsx'
 require 'trollop'
 
 VERSION = "v0.1beta"
+XMLSCHEMA = "http://www.w3.org/2001/XMLSchema"
 
 # Parse ARGS~
 opts = Trollop::options do
@@ -111,11 +112,11 @@ f.close
 @namespaces = @doc.collect_namespaces
 @xsd_namespace = ''
 @namespaces.each do |key,val|
-  @xsd_namespace = key if val == "http://www.w3.org/2001/XMLSchema"
+  @xsd_namespace = key if val == XMLSCHEMA
 end
 @xsd_prefix = @xsd_namespace.split(':')[1]
 
-@root_node = @doc.xpath('/xsd:schema/xsd:element', xsd: 'http://www.w3.org/2001/XMLSchema')
+@root_node = @doc.xpath('/xsd:schema/xsd:element', xsd: XMLSCHEMA)
 @elements = Hash.new
 @enums = Hash.new
 @cnt = 0
@@ -134,7 +135,7 @@ def print_enums(node_name, enum_node, deep = 0)
 end
 
 def exist_complex_type(node)
-    complex_type_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{node['type']}']", xsd: 'http://www.w3.org/2001/XMLSchema')
+    complex_type_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{node['type']}']", xsd: XMLSCHEMA)
     unless complex_type_node.nil?
       complex_type_node.size > 0
     else
@@ -143,7 +144,7 @@ def exist_complex_type(node)
 end
 
 def exist_simple_type(node)
-    simple_type_node = @doc.xpath("/xsd:schema/xsd:simpleType[@name='#{node['type']}']", xsd: 'http://www.w3.org/2001/XMLSchema')
+    simple_type_node = @doc.xpath("/xsd:schema/xsd:simpleType[@name='#{node['type']}']", xsd: XMLSCHEMA)
     unless simple_type_node.nil?
       simple_type_node.size > 0
     else
@@ -170,7 +171,7 @@ def nillable(node)
 end
 
 def documentation(node, deep)
-  description_node = node.xpath("xsd:annotation/xsd:documentation", xsd: 'http://www.w3.org/2001/XMLSchema')
+  description_node = node.xpath("xsd:annotation/xsd:documentation", xsd: XMLSCHEMA)
   if description_node.size > 0
     description = description_node[0].content
     puts "#{padding(deep)}# #{description}".magenta if @stdout && description
@@ -183,33 +184,22 @@ def print_elements(start_node, deep = 0, inout = 'in', node_types = '')
     key = "#{@cnt}-#{node['name']}-#{node['type']}-#{node['ref']}"
     io ||= inout
     io = 'out' if node['name'] && node['name'].end_with?(@test_response)
-    #return if node['type'] == prev_node_type
-    #puts "#{padding(deep)}* #{node['type']}; #{prev_node_type}"
-    #return if deep > 7
     if exist_complex_type(node)
       # Komplexní typ
       description = documentation(node, deep)
       puts "#{padding(deep)}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
-      complex_type_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{node['type']}']", xsd: 'http://www.w3.org/2001/XMLSchema')
-      extension_base = complex_type_node.xpath("descendant::*/xsd:extension", xsd: 'http://www.w3.org/2001/XMLSchema')
-      #if is_recursion
-      #  @elements[key][:description] = "Rekurze elementu \"#{node['type']}\"..."
-      #  return
-      #end
+      complex_type_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{node['type']}']", xsd: XMLSCHEMA)
+      extension_base = complex_type_node.xpath("descendant::*/xsd:extension", xsd: XMLSCHEMA)
       # Extension
       if extension_base.size > 0
         base_name = extension_base[0]['base']
         puts "#{padding(deep + 1)}#{base_name.on_yellow} #{'@extension'.on_blue}" if @stdout
-        extension_base_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{base_name}']", xsd: 'http://www.w3.org/2001/XMLSchema')
-        extension_element_nodes = extension_base_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: 'http://www.w3.org/2001/XMLSchema')
+        extension_base_node = @doc.xpath("/xsd:schema/xsd:complexType[@name='#{base_name}']", xsd: XMLSCHEMA)
+        extension_element_nodes = extension_base_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: XMLSCHEMA)
         print_elements(extension_element_nodes, deep + 2, io) unless extension_base_node.empty?
       end
-      element_nodes = complex_type_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: 'http://www.w3.org/2001/XMLSchema')
-      # unless check_deeper("#{node['type']}", deep)
-      # Když jeden z element_nodes obsahuje stejný type jako complexType, tak stopni rekurzi
-      #check_recursion(node['type'], element_nodes)
-      #return
+      element_nodes = complex_type_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: XMLSCHEMA)
       unless check_recursion(node_types, "#{node['type']}", deep)
         print_elements(element_nodes, deep + 1, io, "#{node_types}#{node['type']};") unless complex_type_node.empty?
       else
@@ -222,8 +212,8 @@ def print_elements(start_node, deep = 0, inout = 'in', node_types = '')
       description = documentation(node, deep)
       puts "#{padding(deep)}#{node['name']} #{node['type'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
-      simple_type_node = @doc.xpath("/xsd:schema/xsd:simpleType[@name='#{node['type']}']", xsd: 'http://www.w3.org/2001/XMLSchema')
-      enum_nodes = simple_type_node.xpath("descendant::*/xsd:enumeration", xsd: 'http://www.w3.org/2001/XMLSchema')
+      simple_type_node = @doc.xpath("/xsd:schema/xsd:simpleType[@name='#{node['type']}']", xsd: XMLSCHEMA)
+      enum_nodes = simple_type_node.xpath("descendant::*/xsd:enumeration", xsd: XMLSCHEMA)
       print_enums(node['type'], enum_nodes, deep + 1) unless simple_type_node.empty?
     else
       # Element
@@ -231,8 +221,8 @@ def print_elements(start_node, deep = 0, inout = 'in', node_types = '')
       puts "#{padding(deep)}#{node['name']} [#{node['type'].green}]#{occurs(node)}#{nillable(node)} #{'@element'.on_blue}" unless node['name'].nil? if @stdout
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false)
       unless node['ref'].nil?
-        ref_type_node = @doc.xpath("/xsd:schema/xsd:group[@name='#{node['ref']}']", xsd: 'http://www.w3.org/2001/XMLSchema')
-        group_nodes = ref_type_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: 'http://www.w3.org/2001/XMLSchema')
+        ref_type_node = @doc.xpath("/xsd:schema/xsd:group[@name='#{node['ref']}']", xsd: XMLSCHEMA)
+        group_nodes = ref_type_node.xpath("descendant::*/xsd:element | descendant::*/xsd:group", xsd: XMLSCHEMA)
         print_elements(group_nodes, deep + 1, io) unless ref_type_node.empty?
       end
     end
@@ -384,8 +374,6 @@ def save_xlsx
         row = get_row_data(row_data)
         sheet.add_row row
 
-        # sheet.add_row ["#{arrows(struct[:deep])}#{name}", type, basic_type, length_prec_format, multiplicity, values, struct[:inout], desc,
-        #                mandatory, struct[:its_complex_type], struct[:its_simple_type], min_occurs, max_occurs, struct[:nillable]]
         sheet.row_style i+1, normal_cell
         sheet.row_style i+1, italic_cell unless struct[:ref].nil?
         sheet.row_style i+1, complex_cell if struct[:its_complex_type] == 'Y'
