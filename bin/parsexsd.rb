@@ -284,21 +284,34 @@ def save_xlsx
     # Excel 2007/2010 Indexed Colors
     # https://closedxml.codeplex.com/wikipage?title=Excel%20Indexed%20Colors
     border = (@border ? Axlsx::STYLE_THIN_BORDER : 0)
+    color_imp = "FFCCFFFF"
     head = s.add_style font_name: @font, sz: @header_font_size, family: 1, b: false, fg_color: "FF000000", bg_color: "FFC0C0C0",
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     null_cell = s.add_style font_name: @font, sz: @font_size, family: 1,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }
     normal_cell = s.add_style font_name: @font, sz: @font_size, family: 1,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
-    italic_cell = s.add_style font_name: @font, sz: @font_size, family: 1, i: true, b: true,
+    normal_cell_imp = s.add_style font_name: @font, sz: @font_size, family: 1, bg_color: color_imp, i: true,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    reference_cell = s.add_style font_name: @font, sz: @font_size, family: 1, i: true, b: true,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    reference_cell_imp = s.add_style font_name: @font, sz: @font_size, family: 1, i: true, b: true, bg_color: color_imp,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     complex_cell = s.add_style font_name: @font, sz: @font_size, family: 1, b: true,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    complex_cell_imp = s.add_style font_name: @font, sz: @font_size, family: 1, b: true, bg_color: color_imp, i: true,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     enum_cell = s.add_style fg_color: "FF0000FF", font_name: @font, sz: @font_size, family: 1, b: true,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    enum_cell_imp = s.add_style fg_color: "FF0000FF", font_name: @font, sz: @font_size, family: 1, b: true, bg_color: color_imp, i: true,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     marked_cell = s.add_style font_name: @font, sz: @font_size, family: 1, b: true, fg_color: "FF000000", bg_color: "FFF0F0F0",
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    marked_cell_imp = s.add_style font_name: @font, sz: @font_size, family: 1, b: true, fg_color: "FF000000", bg_color: color_imp, i: true,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     recursion_cell = s.add_style font_name: @font, sz: @font_size, family: 1, b: true, fg_color: "FF0000FF", bg_color: "FFFFFFCC",
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    recursion_cell_imp = s.add_style font_name: @font, sz: @font_size, family: 1, b: true, fg_color: "FF0000FF", bg_color: color_imp, i: true,
       :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
     wb.add_worksheet(:name => "XSD") do |sheet|
 
@@ -383,7 +396,7 @@ def save_xlsx
         length_prec_format = format[0].scan(/\(\S+\)/)[0][1..-2] if (format && format.size > 0)
 
         # name schematype type length multi enum kind desc mandatory complex simple minoccurs maxoccurs nill
-        row_data = {name: "#{arrows(struct[:deep])}#{name}",
+        row_data = {name: "#{arrows(struct[:deep])}#{struct[:prefix]}#{name}",
                schematype: type,
                type: basic_type,
                length: length_prec_format,
@@ -402,12 +415,49 @@ def save_xlsx
         row = get_row_data(row_data)
 
         style = normal_cell
-        style = italic_cell unless struct[:ref].nil?
-        style = complex_cell if struct[:its_complex_type] == 'Y'
-        style = enum_cell if struct[:its_simple_type] == 'Y'
-        style = recursion_cell if struct[:its_recursion]
-        style = marked_cell if name.end_with? @test_request
-        style = marked_cell if name.end_with? @test_response
+        unless struct[:prefix].empty?
+          style = normal_cell_imp 
+        end
+
+        unless struct[:ref].nil?
+          style = reference_cell
+          unless struct[:prefix].empty?
+            style = reference_cell_imp 
+          end
+        end
+        if struct[:its_complex_type] == 'Y'
+          style = complex_cell 
+          unless struct[:prefix].empty?
+            style = complex_cell_imp 
+          end
+        end
+        if struct[:its_simple_type] == 'Y'
+          style = enum_cell 
+          unless struct[:prefix].empty?
+            style = enum_cell_imp 
+          end
+        end
+
+        if struct[:its_recursion]
+          style = recursion_cell 
+          unless struct[:prefix].empty?
+            style = recursion_cell_imp
+          end
+        end
+
+        if name.end_with? @test_request
+          style = marked_cell 
+          unless struct[:prefix].empty?
+            style = marked_cell_imp
+          end
+        end
+
+        if name.end_with? @test_response
+          style = marked_cell 
+          unless struct[:prefix].empty?
+            style = marked_cell_imp
+          end
+        end
 
         #unless struct[:prefix].empty?
         #  style << s.add_style 
