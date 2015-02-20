@@ -69,6 +69,11 @@ if opts[:columns]
       @only_columns[val.to_sym] = ''
     end
   end
+else
+  # if not exist --columns
+  @columns.each do |key,val|
+    @only_columns[key] = ''
+  end
 end
 
 @columns.each do |key, val|
