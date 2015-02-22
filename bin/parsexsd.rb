@@ -56,10 +56,12 @@ Element = Struct.new(:name, :type, :ref, :its_complex_type, :its_simple_type, :m
 Imported = Struct.new(:namespace, :schemalocation, :content)
 
 @columns = {name: 'NAME', schematype: "XMLSCHEMA\nTYPE", type: 'TYPE', length: "LENGTH/\nPRECISION", multi: 'MULTIPL.', enum: "ENUM.\nVALUES", kind: 'KIND', desc: 'DESCRIPTION', mandatory: 'MANDATORY', complex: "COMPLEX\nTYPE", simple: "SIMPLE\nTYPE", minoccurs: "MIN\nOCCURS", maxoccurs: "MAX\nOCCURS", nill: 'NILLABLE'}
+@columns_size = {name: 40, schematype: 40, type: 25, length: 10, multi: 10, enum: 15, kind: 5, desc: 50, mandatory: 10, complex: 10, simple: 10, minoccurs: 10, maxoccurs: 10, nill: 10}
 
 @header = Array.new
 @empty_row = Array.new
 @only_columns = Hash.new
+@sizes = Array.new
 @imported_schemas = Hash.new
 
 # name schematype type length multi enum kind desc mandatory complex simple minoccurs maxoccurs nill
@@ -79,6 +81,7 @@ end
 
 @columns.each do |key, val|
   @header << val if @only_columns[key]
+  @sizes << @columns_size[key] if @only_columns[key]
   @empty_row << '' if @only_columns[key]
 end
 
@@ -223,9 +226,9 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
           imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
           # p imp_type
           # p imp_complex_type_node.size
-          print_elements(imp_doc, imp_element_nodes, schema, deep + 2, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+          print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
         end
-        print_elements(doc, extension_element_nodes, schema, deep + 2, io, '', prefix) unless extension_base_node.empty?
+        print_elements(doc, extension_element_nodes, schema, deep + 1, io, '', prefix) unless extension_base_node.empty?
       end
       element_nodes = complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
       unless check_recursion(node_types, "#{node['type']}", deep)
@@ -416,51 +419,51 @@ def save_xlsx
 
         style = normal_cell
         unless struct[:prefix].empty?
-          style = normal_cell_imp 
+          style = normal_cell_imp
         end
 
         unless struct[:ref].nil?
           style = reference_cell
           unless struct[:prefix].empty?
-            style = reference_cell_imp 
+            style = reference_cell_imp
           end
         end
         if struct[:its_complex_type] == 'Y'
-          style = complex_cell 
+          style = complex_cell
           unless struct[:prefix].empty?
-            style = complex_cell_imp 
+            style = complex_cell_imp
           end
         end
         if struct[:its_simple_type] == 'Y'
-          style = enum_cell 
+          style = enum_cell
           unless struct[:prefix].empty?
-            style = enum_cell_imp 
+            style = enum_cell_imp
           end
         end
 
         if struct[:its_recursion]
-          style = recursion_cell 
+          style = recursion_cell
           unless struct[:prefix].empty?
             style = recursion_cell_imp
           end
         end
 
         if name.end_with? @test_request
-          style = marked_cell 
+          style = marked_cell
           unless struct[:prefix].empty?
             style = marked_cell_imp
           end
         end
 
         if name.end_with? @test_response
-          style = marked_cell 
+          style = marked_cell
           unless struct[:prefix].empty?
             style = marked_cell_imp
           end
         end
 
         #unless struct[:prefix].empty?
-        #  style << s.add_style 
+        #  style << s.add_style
         #end
 
         sheet.add_row row, style: style
@@ -468,8 +471,10 @@ def save_xlsx
 
         i += 1
       end
-      sheet.auto_filter = "A1:H1" if @auto_filter
+
+      sheet.auto_filter = "A1:#{('A'.ord + @header.size-1).chr}1" if @auto_filter
       sheet.row_style 0, head
+      sheet.column_widths(*@sizes)
     end
   end
   puts "Save to file #{@xlsx_file_name}"
