@@ -56,7 +56,7 @@ Element = Struct.new(:name, :type, :ref, :its_complex_type, :its_simple_type, :m
 Imported = Struct.new(:namespace, :schemalocation, :content)
 
 @columns = {name: 'NAME', schematype: "XMLSCHEMA\nTYPE", type: 'TYPE', length: "LENGTH/\nPRECISION", multi: 'MULTIPL.', enum: "ENUM.\nVALUES", kind: 'KIND', desc: 'DESCRIPTION', mandatory: 'MANDATORY', complex: "COMPLEX\nTYPE", simple: "SIMPLE\nTYPE", minoccurs: "MIN\nOCCURS", maxoccurs: "MAX\nOCCURS", nill: 'NILLABLE'}
-@columns_size = {name: 40, schematype: 40, type: 25, length: 10, multi: 10, enum: 15, kind: 5, desc: 50, mandatory: 10, complex: 10, simple: 10, minoccurs: 10, maxoccurs: 10, nill: 10}
+@columns_size = {name: 35, schematype: 35, type: 25, length: 10, multi: 10, enum: 15, kind: 5, desc: 50, mandatory: 10, complex: 10, simple: 10, minoccurs: 10, maxoccurs: 10, nill: 10}
 
 @header = Array.new
 @empty_row = Array.new
