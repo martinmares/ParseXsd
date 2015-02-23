@@ -17,14 +17,15 @@ opts = Trollop::options do
   opt :indent, 'name the elements in XLSX will be indented'
   opt :border, 'generate a border for cells in XLSX?'
   opt :columns, 'the list of columns in the XLSX', type: :string
+  opt :imports, 'on/off xsd:import tags (default: on)', default: "on"
   opt "request-end-with".to_sym, 'mark the line ending at {Request}', type: :string
   opt "response-end-with".to_sym, 'mark the line ending at {Response}', type: :string
   opt "header-request".to_sym, 'add a header to each of the {Request} elem.'
   opt "header-response".to_sym, 'add a header to each of the {Response} elem.'
   opt "auto-filter".to_sym, 'turn on the "auto filter on the first row"'
-  opt "font-name".to_sym, 'change the default font ("Tahoma")', type: :string
-  opt "font-size".to_sym, 'change the default font size (9)', type: :int
-  opt "header-font-size".to_sym, 'change the default heder font size (9)', type: :int
+  opt "font-name".to_sym, 'change the font (default: "Tahoma")', type: :string
+  opt "font-size".to_sym, 'change the font size (default 9)', type: :int
+  opt "header-font-size".to_sym, 'change the heder font size (default: 9)', type: :int
 end
 
 config_file = opts[:config_file]
@@ -33,6 +34,7 @@ Trollop::die :xsd, "XSD file must exist" unless File.exist?(opts[:xsd]) if opts[
 
 @stdout = opts[:stdout] || false
 @indent = opts[:indent] || false
+@imports = opts[:imports]
 @font = opts["font-name".to_sym] || 'Tahoma'
 @font_size = opts["font-size".to_sym] || 9
 @header_font_size = opts["header-font-size".to_sym] || 9
@@ -226,7 +228,9 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
           imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
           # p imp_type
           # p imp_complex_type_node.size
-          print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+          if @imports == "on"
+            print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+          end
         end
         print_elements(doc, extension_element_nodes, schema, deep + 1, io, '', prefix) unless extension_base_node.empty?
       end
