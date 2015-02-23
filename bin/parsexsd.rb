@@ -13,6 +13,7 @@ opts = Trollop::options do
   version "parsexsd #{VERSION} (c) 2015 Martin Mareš"
   opt :xsd, 'name of the input XSD file', type: :string
   opt :xlsx, 'name of the output XLSX file', type: :string
+  opt "xlsx-enums".to_sym, 'name of the output XLSX file for ENUMs', type: :string
   opt :stdout, 'write the XSD structure on the screen'
   opt :indent, 'name the elements in XLSX will be indented'
   opt :border, 'generate a border for cells in XLSX?'
@@ -40,6 +41,7 @@ Trollop::die :xsd, "XSD file must exist" unless File.exist?(opts[:xsd]) if opts[
 @header_font_size = opts["header-font-size".to_sym] || 9
 @xsd_file_name = opts[:xsd]
 @xlsx_file_name = opts[:xlsx]
+@xlsx_enums_file_name = opts["xlsx-enums".to_sym]
 @auto_filter = opts["auto-filter".to_sym] || false
 @border = opts[:border] || false
 
@@ -56,6 +58,8 @@ end
 
 Element = Struct.new(:name, :type, :ref, :its_complex_type, :its_simple_type, :min_occurs, :max_occurs, :nillable, :description, :deep, :inout, :its_recursion, :prefix)
 Imported = Struct.new(:namespace, :schemalocation, :content)
+Enum = Struct.new(:name, :type, :value, :description)
+
 
 @columns = {name: 'NAME', schematype: "XMLSCHEMA\nTYPE", type: 'TYPE', length: "LENGTH/\nPRECISION", multi: 'MULTIPL.', enum: "ENUM.\nVALUES", kind: 'KIND', desc: 'DESCRIPTION', mandatory: 'MANDATORY', complex: "COMPLEX\nTYPE", simple: "SIMPLE\nTYPE", minoccurs: "MIN\nOCCURS", maxoccurs: "MAX\nOCCURS", nill: 'NILLABLE'}
 @columns_size = {name: 35, schematype: 35, type: 25, length: 10, multi: 10, enum: 15, kind: 5, desc: 50, mandatory: 10, complex: 10, simple: 10, minoccurs: 10, maxoccurs: 10, nill: 10}
@@ -140,19 +144,23 @@ end
 @root_node = @doc.xpath('/namespace:schema/namespace:element', namespace: XMLSCHEMA)
 @elements = Hash.new
 @enums = Hash.new
+@enum_values = Hash.new
 @cnt = 0
 
 def padding(deep)
   " " * 4 * deep
 end
 
-def print_enums(node_name, enum_node, deep = 0)
-  @enums[node_name] = ""
+# Print enum values
+def print_enums(node_name, node_type, enum_node, schema, deep = 0)
+  @enums[node_type] = ""
   enum_node.each do |node|
     puts "#{padding(deep)} * #{node['value']}" if @stdout
-    @enums[node_name] += "#{node['value']}\n"
+    description = documentation(node, deep, schema)
+    @enums[node_type] += "#{node['value']}\n"
+    @enum_values["#{node_name}-#{node_type}-#{node['value']}"] = Enum.new(node_name, node_type, node['value'], description)
   end
-  @enums[node_name].strip!
+  @enums[node_type].strip!
 end
 
 def exist_complex_type(doc, node, schema)
@@ -204,7 +212,9 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
   start_node.each do |node|
     key = "#{@cnt}-#{node['name']}-#{node['type']}-#{node['ref']}"
     io ||= inout
-    io = 'out' if node['name'] && node['name'].end_with?(@test_response)
+    if @test_response
+      io = 'out' if node['name'] && node['name'].end_with?(@test_response)
+    end
     if exist_complex_type(doc, node, schema)
       # Komplexní typ
       description = documentation(node, deep, schema)
@@ -249,7 +259,7 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
       enum_nodes = simple_type_node.xpath("descendant::*/namespace:enumeration", namespace: schema)
-      print_enums(node['type'], enum_nodes, deep + 1) unless simple_type_node.empty?
+      print_enums(node['name'], node['type'], enum_nodes, schema, deep + 1) unless simple_type_node.empty?
     else
       # Element
       description = documentation(node, deep, schema)
@@ -487,6 +497,44 @@ def save_xlsx
   puts "#{'=' * 40}"
 end
 
+# XLS ENUMs
+def save_xlsx_enums
+  puts "\n#{'=' * 10} Generating XLSX for ENUMs #{'=' * 13}"
+  p = Axlsx::Package.new
+  p.use_autowidth = true
+  wb = p.workbook
+  wb.styles do |s|
+    # Excel 2007/2010 Indexed Colors
+    # https://closedxml.codeplex.com/wikipage?title=Excel%20Indexed%20Colors
+    border = (@border ? Axlsx::STYLE_THIN_BORDER : 0)
+    head = s.add_style font_name: @font, sz: @header_font_size, family: 1, b: false, fg_color: "FF000000", bg_color: "FFC0C0C0",
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    normal_cell = s.add_style font_name: @font, sz: @font_size, family: 1,
+      :alignment => { :horizontal => :left, :vertical => :top, :wrap_text => true }, border: border
+    wb.add_worksheet(:name => "XSD_ENUMs") do |sheet|
+
+      # Add header
+      sheet.add_row ["NAME",'TYPE','VALUE','DESCRIPTION']
+
+      i = 0
+      @enum_values.each do |kay,val|
+
+        # Add data row
+        row = [val[:name], val[:type], val[:value], val[:description]]
+        sheet.add_row row, style: normal_cell
+        i += 1
+
+      end
+
+      sheet.column_widths(*[25,25,25,50])
+      sheet.row_style 0, head
+    end
+  end
+  puts "Save to file #{@xlsx_enums_file_name}"
+  p.serialize(@xlsx_enums_file_name)
+  puts "Count of elements: #{@elements.size}"
+  puts "#{'=' * 40}"
+end
 print_elements(@doc, @root_node, XMLSCHEMA) if @xsd_file_name
 
 # Print
@@ -498,4 +546,11 @@ end
 puts "#{'=' * 40}"
 
 save_xlsx() if @xlsx_file_name
+save_xlsx_enums() if (@xlsx_enums_file_name && @enum_values.size > 0)
+
+# if @xlsx_enums_file_name
+#   @enum_values.each do |key,val|
+#     p "key: #{key}; val: #{val}"
+#   end
+# end
 
