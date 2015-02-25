@@ -19,6 +19,7 @@ opts = Trollop::options do
   opt :border, 'generate a border for cells in XLSX?'
   opt :columns, 'the list of columns in the XLSX', type: :string
   opt :imports, 'on/off xsd:import tags (default: on)', default: "on"
+  opt :frozen, 'add "frozen" row and column started at A1 position', type: :boolean, default: false
   opt "request-end-with".to_sym, 'mark the line ending at {Request}', type: :string
   opt "response-end-with".to_sym, 'mark the line ending at {Response}', type: :string
   opt "header-request".to_sym, 'add a header to each of the {Request} elem.'
@@ -29,13 +30,13 @@ opts = Trollop::options do
   opt "header-font-size".to_sym, 'change the heder font size (default: 9)', type: :int
 end
 
-config_file = opts[:config_file]
 Trollop::die :xsd, "please specify input XSD file" unless opts[:xsd]
 Trollop::die :xsd, "XSD file must exist" unless File.exist?(opts[:xsd]) if opts[:xsd]
 
 @stdout = opts[:stdout] || false
 @indent = opts[:indent] || false
 @imports = opts[:imports]
+@frozen = opts[:frozen]
 @font = opts["font-name".to_sym] || 'Tahoma'
 @font_size = opts["font-size".to_sym] || 9
 @header_font_size = opts["header-font-size".to_sym] || 9
@@ -489,6 +490,17 @@ def save_xlsx
       sheet.auto_filter = "A1:#{('A'.ord + @header.size-1).chr}1" if @auto_filter
       sheet.row_style 0, head
       sheet.column_widths(*@sizes)
+
+      if @frozen
+        sheet.sheet_view.pane do |pane|
+          pane.top_left_cell = "B2"
+          pane.state = :frozen_split
+          pane.y_split = 1
+          pane.x_split = 1
+          pane.active_pane = :bottom_right
+        end
+      end
+
     end
   end
   puts "Save to file #{@xlsx_file_name}"
@@ -528,6 +540,17 @@ def save_xlsx_enums
 
       sheet.column_widths(*[25,25,25,50])
       sheet.row_style 0, head
+
+      # if @frozen
+      #   sheet.sheet_view.pane do |pane|
+      #     pane.top_left_cell = "B2"
+      #     pane.state = :frozen_split
+      #     pane.y_split = 1
+      #     pane.x_split = 1
+      #     pane.active_pane = :bottom_right
+      #   end
+      # end
+
     end
   end
   puts "Save to file #{@xlsx_enums_file_name}"
