@@ -182,7 +182,11 @@ def exist_complex_type(doc, node, schema)
 end
 
 def exist_simple_type(doc, node, schema)
-    simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+    if node['type'].nil?
+      simple_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:simpleType", namespace: schema)
+    else
+      simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+    end
     unless simple_type_node.nil?
       simple_type_node.size > 0
     else
@@ -230,15 +234,12 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
       #puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
       if node['type'].nil?
         puts "#{padding(deep)}#{prefix}#{node['name']} #{node['name'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue}" if @stdout
+        complex_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:complexType", namespace: schema)
         @elements[key] = Element.new(node['name'], node['name'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       else
         puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].to_s.yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue}" if @stdout
-        @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
-      end
-      if node['type'].nil?
-        complex_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:complexType", namespace: schema)
-      else
         complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+        @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       end
       extension_base = complex_type_node.xpath("descendant::*/namespace:extension", namespace: schema)
       # Extension
@@ -252,13 +253,15 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
         if base_name.split(':').size == 2
           imp_prefix = base_name.split(':')[0]
           imp_type = base_name.split(':')[1]
-          imp_doc = @imported_schemas[imp_prefix][:content]
-          imp_complex_type_node = imp_doc.xpath("/namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
-          imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
-          # p imp_type
-          # p imp_complex_type_node.size
-          if @imports == "on"
-            print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+          if imp_prefix != @xsd_prefix
+            imp_doc = @imported_schemas[imp_prefix][:content]
+            imp_complex_type_node = imp_doc.xpath("/namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
+            imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+            # p imp_type
+            # p imp_complex_type_node.size
+            if @imports == "on"
+              print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+            end
           end
         end
         print_elements(doc, extension_element_nodes, schema, deep + 1, io, '', prefix) unless extension_base_node.empty?
@@ -276,9 +279,15 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
     elsif exist_simple_type(doc, node, schema)
       # Výčet (SimpleType)
       description = documentation(node, deep, schema)
-      puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
-      @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
-      simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+      if node['type'].nil?
+        puts "#{padding(deep)}#{prefix}#{node['name']} #{node['name'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
+        simple_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:simpleType", namespace: schema)
+        @elements[key] = Element.new(node['name'], node['name'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      else
+        puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].on_magenta}#{occurs(node)}#{nillable(node)} #{'@simpleType'.on_blue}" if @stdout
+        simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
+        @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      end
       enum_nodes = simple_type_node.xpath("descendant::*/namespace:enumeration", namespace: schema)
       print_enums(node['name'], node['type'], enum_nodes, schema, deep + 1) unless simple_type_node.empty?
     else
@@ -374,7 +383,7 @@ def save_xlsx
           type = "SimpleType\n(#{struct[:type]})"
         elsif not struct[:ref].to_s.empty?
           name = "#{struct[:ref]}"
-          basic_type = "GROUP"
+          basic_type = "REFERENCE"
           type = "Reference\n(#{struct[:ref]})"
         end
 
