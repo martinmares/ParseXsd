@@ -36,3 +36,7 @@ Options:
 
 ![msdn.xsd terminal output](https://raw.githubusercontent.com/martinmares/ParseXsd/master/images/msdn_xsd_stdout.png)
 
+## examples\stackoverflow\print_stdout.sh
+
+![stackoverflow.xsd terminal output](https://raw.githubusercontent.com/martinmares/ParseXsd/master/images/stackoverflow_xsd_stdout.png )
+
