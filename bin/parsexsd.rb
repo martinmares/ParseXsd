@@ -165,7 +165,15 @@ def print_enums(node_name, node_type, enum_node, schema, deep = 0)
 end
 
 def exist_complex_type(doc, node, schema)
-    complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+    if node['type'].nil?
+      complex_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:complexType", namespace: schema)
+    else
+      complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+    end
+    #p node['name']
+    #p complex_type_node.class
+    #p complex_type_node.size
+    #exit 0
     unless complex_type_node.nil?
       complex_type_node.size > 0
     else
@@ -219,9 +227,19 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
     if exist_complex_type(doc, node, schema)
       # Komplexní typ
       description = documentation(node, deep, schema)
-      puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
-      @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
-      complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+      #puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue} {deep: #{deep}}" if @stdout
+      if node['type'].nil?
+        puts "#{padding(deep)}#{prefix}#{node['name']} #{node['name'].yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue}" if @stdout
+        @elements[key] = Element.new(node['name'], node['name'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      else
+        puts "#{padding(deep)}#{prefix}#{node['name']} #{node['type'].to_s.yellow}#{occurs(node)}#{nillable(node)} #{'@complexType'.on_blue}" if @stdout
+        @elements[key] = Element.new(node['name'], node['type'], node['ref'], 'Y', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
+      end
+      if node['type'].nil?
+        complex_type_node = doc.xpath("//namespace:element[@name='#{node['name']}']/namespace:complexType", namespace: schema)
+      else
+        complex_type_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{node['type']}']", namespace: schema)
+      end
       extension_base = complex_type_node.xpath("descendant::*/namespace:extension", namespace: schema)
       # Extension
       if extension_base.size > 0
@@ -246,6 +264,8 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
         print_elements(doc, extension_element_nodes, schema, deep + 1, io, '', prefix) unless extension_base_node.empty?
       end
       element_nodes = complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+      #p element_nodes.class
+      #exit 0
       unless check_recursion(node_types, "#{node['type']}", deep)
         print_elements(doc, element_nodes, schema, deep + 1, io, "#{node_types}#{node['type']};", prefix) unless complex_type_node.empty?
       else
@@ -264,7 +284,7 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
     else
       # Element
       description = documentation(node, deep, schema)
-      puts "#{padding(deep)}#{prefix}#{node['name']} [#{node['type'].green}]#{occurs(node)}#{nillable(node)} #{'@element'.on_blue}" unless node['name'].nil? if @stdout
+      puts "#{padding(deep)}#{prefix}#{node['name']} [#{node['type'].to_s.green}]#{occurs(node)}#{nillable(node)} #{'@element'.on_blue}" unless node['name'].nil? if @stdout
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       unless node['ref'].nil?
         ref_type_node = doc.xpath("/namespace:schema/namespace:group[@name='#{node['ref']}']", namespace: schema)
