@@ -247,7 +247,8 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
         base_name = extension_base[0]['base']
         puts "#{padding(deep + 1)}#{prefix}#{base_name.on_yellow} #{'@extension'.on_blue}" if @stdout
         extension_base_node = doc.xpath("/namespace:schema/namespace:complexType[@name='#{base_name}']", namespace: schema)
-        extension_element_nodes = extension_base_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+        extension_element_nodes = extension_base_node.xpath("descendant::*/namespace:element | \
+                                                            descendant::*/namespace:group", namespace: schema)
         # Test for prefix, e.g. "prefix:complexType"...
         # if success, print imported elements
         if base_name.split(':').size == 2
@@ -255,18 +256,20 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
           imp_type = base_name.split(':')[1]
           if imp_prefix != @xsd_prefix
             imp_doc = @imported_schemas[imp_prefix][:content]
-            imp_complex_type_node = imp_doc.xpath("/namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
-            imp_element_nodes = imp_complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+            imp_node = imp_doc.xpath("/namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
+            imp_element_nodes = imp_node.xpath("descendant::*/namespace:element | \
+                                               descendant::*/namespace:group", namespace: schema)
             # p imp_type
             # p imp_complex_type_node.size
             if @imports == "on"
-              print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_complex_type_node.empty?
+              print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_node.empty?
             end
           end
         end
         print_elements(doc, extension_element_nodes, schema, deep + 1, io, '', prefix) unless extension_base_node.empty?
       end
-      element_nodes = complex_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+      element_nodes = complex_type_node.xpath("descendant::*/namespace:element | \
+                                              descendant::*/namespace:group", namespace: schema)
       #p element_nodes.class
       #exit 0
       unless check_recursion(node_types, "#{node['type']}", deep)
@@ -288,6 +291,49 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
         simple_type_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{node['type']}']", namespace: schema)
         @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', 'Y', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       end
+      # restriction base
+      restriction_base = simple_type_node.xpath("namespace:restriction[1]", namespace: schema)
+      if restriction_base.size > 0
+        restriction_base_name = restriction_base[0]['base']
+        description = documentation(restriction_base, deep, schema)
+        # Can be simpleType or complexType
+        restriction_base_node = doc.xpath("/namespace:schema/namespace:simpleType[@name='#{restriction_base_name}'] | \
+                                          /namespace:schema/namespace:complexType[@name='#{restriction_base_name}']", namespace: schema)
+        restriction_element_nodes = restriction_base_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+        # =====
+        # Test for prefix, e.g. "prefix:complexType"...
+        # if success, print imported elements
+        if restriction_base_name.split(':').size == 2
+          imp_prefix = restriction_base_name.split(':')[0]
+          imp_type = restriction_base_name.split(':')[1]
+          if imp_prefix != @xsd_prefix
+            imp_doc = @imported_schemas[imp_prefix][:content]
+            imp_node = imp_doc.xpath("/namespace:schema/namespace:simpleType[@name='#{imp_type}'] |\
+                                                  /namespace:schema/namespace:complexType[@name='#{imp_type}']", namespace: schema)
+            imp_element_nodes = imp_node.xpath("descendant::*/namespace:element | \
+                                                            descendant::*/namespace:group | \
+                                                                      namespace:restriction[1]", namespace: schema)
+            #p imp_type
+            #p imp_complex_or_simple_type_node.size
+            #p imp_element_nodes.size
+            #exit 0
+            if @imports == "on"
+              #p imp_prefix
+              #exit 0
+              #print_elements(imp_doc, imp_element_nodes, schema, deep + 1, io, '', "#{imp_prefix}:") unless imp_node.empty?
+            end
+          end
+          unless imp_node.nil?
+            description = documentation(imp_node, deep + 1, schema) 
+            @elements[key] = Element.new(imp_type, prefix, '', '', 'Y', '', \
+                                         '', '', description, deep + 1, io, false, imp_prefix)
+          end
+          puts "#{padding(deep + 1)}#{prefix}#{restriction_base_name.on_red} #{'@restriction'.on_blue}" if @stdout
+        end
+        print_elements(doc, restriction_element_nodes, schema, deep + 1, io, '', prefix) unless restriction_base_node.empty?
+        # =====
+      end
+      # /restriction base
       enum_nodes = simple_type_node.xpath("descendant::*/namespace:enumeration", namespace: schema)
       print_enums(node['name'], node['type'], enum_nodes, schema, deep + 1) unless simple_type_node.empty?
     else
@@ -297,7 +343,8 @@ def print_elements(doc, start_node, schema, deep = 0, inout = 'in', node_types =
       @elements[key] = Element.new(node['name'], node['type'], node['ref'], '', '', node['minOccurs'], node['maxOccurs'], node['nillable'], description, deep, io, false, prefix)
       unless node['ref'].nil?
         ref_type_node = doc.xpath("/namespace:schema/namespace:group[@name='#{node['ref']}']", namespace: schema)
-        group_nodes = ref_type_node.xpath("descendant::*/namespace:element | descendant::*/namespace:group", namespace: schema)
+        group_nodes = ref_type_node.xpath("descendant::*/namespace:element | \
+                                          descendant::*/namespace:group", namespace: schema)
         print_elements(doc, group_nodes, schema, deep + 1, io, '', prefix) unless ref_type_node.empty?
       end
     end
@@ -491,6 +538,8 @@ def save_xlsx
             style = recursion_cell_imp
           end
         end
+
+        name = '' if name.nil?
 
         if name.end_with? @test_request
           style = marked_cell
