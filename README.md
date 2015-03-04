@@ -29,3 +29,10 @@ Options:
   -v, --version                  Print version and exit
   -p, --help                     Show this message
 ```
+
+# Sample terminal output with --stdout
+
+## examples\msdn\print_stdout.sh
+
+![msdn.xsd terminal output](https://raw.githubusercontent.com/martinmares/ParseXsd/master/images/msdn_xsd_stdout.png)
+
