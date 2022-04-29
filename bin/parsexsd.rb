@@ -1,15 +1,17 @@
+#!/usr/bin/env ruby
 # encoding: utf-8
+$VERBOSE = nil
 
 require 'nokogiri'
 require 'term/ansicolor'
 require 'axlsx'
-require 'trollop'
+require 'optimist'
 
 VERSION = "v0.1beta"
 XMLSCHEMA = "http://www.w3.org/2001/XMLSchema"
 
 # Parse ARGS~
-opts = Trollop::options do
+opts = Optimist::options do
   version "parsexsd #{VERSION} (c) 2015 Martin Mareš"
   opt :xsd, 'name of the input XSD file', type: :string
   opt :xlsx, 'name of the output XLSX file', type: :string
@@ -30,8 +32,8 @@ opts = Trollop::options do
   opt "header-font-size".to_sym, 'change the heder font size (default: 9)', type: :int
 end
 
-Trollop::die :xsd, "please specify input XSD file" unless opts[:xsd]
-Trollop::die :xsd, "XSD file must exist" unless File.exist?(opts[:xsd]) if opts[:xsd]
+Optimist::die :xsd, "please specify input XSD file" unless opts[:xsd]
+Optimist::die :xsd, "XSD file must exist" unless File.exist?(opts[:xsd]) if opts[:xsd]
 
 @stdout = opts[:stdout] || false
 @indent = opts[:indent] || false
